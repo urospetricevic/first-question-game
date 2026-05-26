@@ -154,7 +154,9 @@ function localRuleJudge(answer) {
   const hasReasonConnector = /\b(because|since|as|for|when|if|although|but|so|therefore)\b/.test(normalized);
   const hasPurposeReason = /\bto\s+(survive|help|protect|care|build|change|improve|live|thrive|cooperate|learn|grow|repair|avoid|make|be|become)\b/.test(normalized);
   const hasMoralReason = /\b(need|should|must|try|choose|can|have to)\b.{0,90}\b(good|kind|better|help|survive|care|protect|compassion|each other|others|strangers)\b/.test(normalized);
-  const hasReason = wordCount >= 7 && (hasReasonConnector || hasPurposeReason || hasMoralReason);
+  const hasHumanReason = /\b(we|humans|people|humanity|society)\b.{0,70}\b(good|bad|selfish|kind|cruel|compassionate|violent|helpful|greedy|caring|survive|protect|harm|help)\b/.test(normalized);
+  const hasConciseExplanation = wordCount >= 4 && hasHumanReason;
+  const hasReason = hasConciseExplanation || (wordCount >= 7 && (hasReasonConnector || hasPurposeReason || hasMoralReason));
   const pass = (startsYes !== startsNo) && !ambiguous && hasReason;
 
   return {
@@ -168,9 +170,14 @@ function localRuleJudge(answer) {
 }
 
 async function llmJudge(answer) {
+  const localVerdict = localRuleJudge(answer);
+  if (localVerdict.pass) {
+    return { ...localVerdict, mode: "local precheck" };
+  }
+
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    return localRuleJudge(answer);
+    return localVerdict;
   }
 
   const schema = {
@@ -196,7 +203,7 @@ async function llmJudge(answer) {
         {
           role: "system",
           content:
-            "You are the Level 1 gate judge for a minimalist game. The player is asked: 'Are you humans good?' To pass, the answer must take exactly one clear stance: yes or no. It must not answer neither, both, maybe, it depends, unclear, or avoid the question. It must include a meaningful explanation, but a concise reason is enough, including a purpose statement such as needing goodness to survive. Be strict about stance, forgiving about phrasing, and concise.",
+            "You are the Level 1 gate judge for a minimalist game. The player is asked: 'Are you humans good?' To pass, the answer must take exactly one clear stance: yes or no. It must not answer neither, both, maybe, it depends, unclear, or avoid the question. It must include an explanation, but a very concise reason is enough. Accept short answers like 'No we are selfish' or 'Yes humans can care for each other.' Be strict about stance, forgiving about phrasing, and concise.",
         },
         {
           role: "user",
