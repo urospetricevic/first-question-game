@@ -23,14 +23,15 @@ OPENAI_MODEL=gpt-4.1-mini
 
 ## Deploy On Render
 
-This app saves attempts and email/IP locks on disk, so use a Render web service with a persistent disk.
+This app saves attempts and email/IP locks on disk. The included default Render config uses a free web service, which is fine for sharing a prototype, but its local saved data can reset when the service restarts or redeploys.
 
 The included `render.yaml` configures:
 
 - Node web service
 - `npm start`
-- `DATA_DIR=/var/data`
-- 1 GB persistent disk mounted at `/var/data`
+- `DATA_DIR=/tmp/first-question-data`
 - `OPENAI_API_KEY` as a secret to set in Render
 
 After creating the service, add your `OPENAI_API_KEY` in Render's Environment settings.
+
+For permanent saved answers, upgrade the service and add a persistent disk, then set `DATA_DIR` to the disk mount path.
