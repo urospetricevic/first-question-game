@@ -149,7 +149,11 @@ function localRuleJudge(answer) {
   const startsYes = /^yes\b/.test(normalized);
   const startsNo = /^no\b/.test(normalized);
   const ambiguous = /\b(neither|both|depends|maybe|not sure|cannot say|can't say)\b/.test(normalized);
-  const hasReason = /\b(because|since|as|for|when|if|although|but)\b/.test(normalized) && answer.trim().split(/\s+/).length >= 8;
+  const wordCount = answer.trim().split(/\s+/).filter(Boolean).length;
+  const hasReasonConnector = /\b(because|since|as|for|when|if|although|but|so|therefore)\b/.test(normalized);
+  const hasPurposeReason = /\bto\s+(survive|help|protect|care|build|change|improve|live|thrive|cooperate|learn|grow|repair|avoid|make|be|become)\b/.test(normalized);
+  const hasMoralReason = /\b(need|should|must|try|choose|can|have to)\b.{0,90}\b(good|kind|better|help|survive|care|protect|compassion|each other|others|strangers)\b/.test(normalized);
+  const hasReason = wordCount >= 7 && (hasReasonConnector || hasPurposeReason || hasMoralReason);
   const pass = (startsYes !== startsNo) && !ambiguous && hasReason;
 
   return {
@@ -191,7 +195,7 @@ async function llmJudge(answer) {
         {
           role: "system",
           content:
-            "You are the Level 1 gate judge for a minimalist game. The player is asked: 'Are you humans good?' To pass, the answer must take exactly one clear stance: yes or no. It must not answer neither, both, maybe, it depends, unclear, or avoid the question. It must include a meaningful explanation. Be strict but concise.",
+            "You are the Level 1 gate judge for a minimalist game. The player is asked: 'Are you humans good?' To pass, the answer must take exactly one clear stance: yes or no. It must not answer neither, both, maybe, it depends, unclear, or avoid the question. It must include a meaningful explanation, but a concise reason is enough, including a purpose statement such as needing goodness to survive. Be strict about stance, forgiving about phrasing, and concise.",
         },
         {
           role: "user",
