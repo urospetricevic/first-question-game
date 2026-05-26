@@ -2,7 +2,6 @@ const emailForm = document.getElementById("emailForm");
 const form = document.getElementById("answerForm");
 const email = document.getElementById("email");
 const answer = document.getElementById("answer");
-const counter = document.getElementById("counter");
 const result = document.getElementById("result");
 const gateResult = document.getElementById("gateResult");
 const button = document.getElementById("enterButton");
@@ -12,10 +11,6 @@ const levelOne = document.getElementById("levelOne");
 const questionBlock = levelOne.querySelector(".question-block");
 
 let activeEmail = "";
-
-function updateCounter() {
-  counter.textContent = `${answer.value.length} / ${answer.maxLength}`;
-}
 
 function showResult(payload) {
   result.className = `result ${payload.pass ? "pass" : "fail"}`;
@@ -130,10 +125,8 @@ async function submitEmail(event) {
   }
 }
 
-answer.addEventListener("input", updateCounter);
 form.addEventListener("submit", submitAnswer);
 emailForm.addEventListener("submit", submitEmail);
-updateCounter();
 
 const savedEmail = sessionStorage.getItem("firstQuestionEmail");
 if (savedEmail && location.protocol.startsWith("http")) {

@@ -10,6 +10,7 @@ const port = Number(process.env.PORT || 4173);
 const host = process.env.HOST || "0.0.0.0";
 const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 const maxAttempts = 7;
+const maxAnswerLength = 240;
 const dataDir = process.env.DATA_DIR || path.join(root, "data");
 const answersPath = path.join(dataDir, "answers.json");
 
@@ -285,13 +286,14 @@ async function handleEvaluate(req, res) {
       });
     }
 
-    const verdict = await llmJudge(answer.slice(0, 900));
+    const limitedAnswer = answer.slice(0, maxAnswerLength);
+    const verdict = await llmJudge(limitedAnswer);
     const savedAttempt = {
       id: crypto.randomUUID(),
       createdAt: new Date().toISOString(),
       email,
       ipHash,
-      answer: answer.slice(0, 900),
+      answer: limitedAnswer,
       pass: Boolean(verdict.pass),
       stance: verdict.stance,
       mode: verdict.mode || "unknown",

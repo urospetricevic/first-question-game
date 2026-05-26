@@ -89,8 +89,7 @@ body::after {
   margin-top: clamp(38px, 8vw, 74px);
 }
 
-label,
-#counter {
+label {
   color: var(--muted);
 }
 
@@ -147,11 +146,6 @@ input:focus {
   justify-content: space-between;
   gap: 16px;
   margin-top: 16px;
-}
-
-#counter {
-  margin: 0;
-  font-size: 13px;
 }
 
 button {
