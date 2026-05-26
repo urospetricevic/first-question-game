@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: first-question-game
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: OPENAI_MODEL
+        value: gpt-4.1-mini
+      - key: DATA_DIR
+        value: /var/data
+      - key: OPENAI_API_KEY
+        sync: false
+    disk:
+      name: first-question-data
+      mountPath: /var/data
+      sizeGB: 1

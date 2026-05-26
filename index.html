@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>The First Question</title>
+    <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="%23071018"/><circle cx="32" cy="32" r="18" fill="none" stroke="%23d9a951" stroke-width="4"/><circle cx="32" cy="32" r="4" fill="%23d9a951"/></svg>' />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="level-shell">
+      <section class="level-card" aria-label="Level 1">
+        <div id="emailGate" class="gate-panel">
+          <div class="level-meta">
+            <span>Entry</span>
+          </div>
+
+          <div class="question-block">
+            <h1>Identify yourself.</h1>
+          </div>
+
+          <form id="emailForm" class="answer-form">
+            <label for="email">Email</label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              maxlength="180"
+              autocomplete="email"
+              required
+            />
+            <div class="form-row">
+              <p></p>
+              <button id="emailButton" type="submit">Enter</button>
+            </div>
+          </form>
+
+          <section id="gateResult" class="result" aria-live="polite"></section>
+        </div>
+
+        <div id="levelOne" hidden>
+          <div class="level-meta">
+            <span>Level 1</span>
+          </div>
+
+          <div class="question-block">
+            <h1>Are you humans good?</h1>
+          </div>
+
+          <form id="answerForm" class="answer-form">
+            <label for="answer">Your answer</label>
+            <input
+              id="answer"
+              name="answer"
+              type="text"
+              maxlength="900"
+              autocomplete="off"
+              required
+            />
+            <div class="form-row">
+              <p id="counter">0 / 900</p>
+              <button id="enterButton" type="submit">Enter</button>
+            </div>
+          </form>
+
+          <section id="result" class="result" aria-live="polite"></section>
+        </div>
+      </section>
+    </main>
+    <script src="game.js"></script>
+  </body>
+</html>
