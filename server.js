@@ -13,6 +13,10 @@ const maxAttempts = 7;
 const maxAnswerLength = 240;
 const dataDir = process.env.DATA_DIR || path.join(root, "data");
 const answersPath = path.join(dataDir, "answers.json");
+const usePostgres = Boolean(
+  process.env.DATABASE_URL || (process.env.INSTANCE_CONNECTION_NAME && process.env.DB_USER && process.env.DB_NAME),
+);
+let pool;
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -56,6 +60,49 @@ function sendJson(res, status, payload) {
   res.end(JSON.stringify(payload));
 }
 
+async function getPool() {
+  if (pool) {
+    return pool;
+  }
+
+  const { Pool } = require("pg");
+  const ssl = process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : undefined;
+  const config = process.env.DATABASE_URL
+    ? { connectionString: process.env.DATABASE_URL, ssl }
+    : {
+        host: `/cloudsql/${process.env.INSTANCE_CONNECTION_NAME}`,
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME,
+      };
+
+  pool = new Pool(config);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS participants (
+      id uuid PRIMARY KEY,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      email text NOT NULL,
+      ip_hash text NOT NULL UNIQUE
+    );
+
+    CREATE TABLE IF NOT EXISTS attempts (
+      id uuid PRIMARY KEY,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      email text NOT NULL,
+      ip_hash text NOT NULL,
+      answer text NOT NULL,
+      pass boolean NOT NULL,
+      stance text NOT NULL,
+      mode text NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS attempts_email_idx ON attempts (email);
+    CREATE INDEX IF NOT EXISTS attempts_ip_hash_idx ON attempts (ip_hash);
+  `);
+
+  return pool;
+}
+
 function readStore() {
   try {
     const store = JSON.parse(fs.readFileSync(answersPath, "utf8"));
@@ -71,6 +118,111 @@ function readStore() {
 function writeStore(store) {
   fs.mkdirSync(path.dirname(answersPath), { recursive: true });
   fs.writeFileSync(answersPath, JSON.stringify(store, null, 2));
+}
+
+async function getParticipantState(email, ipHash) {
+  if (!usePostgres) {
+    const store = readStore();
+    const matching = store.attempts.filter((attempt) => attempt.email === email || attempt.ipHash === ipHash);
+    const passed = matching.some((attempt) => attempt.pass);
+    return {
+      passed,
+      attempts: matching.length,
+      remaining: Math.max(0, maxAttempts - matching.length),
+    };
+  }
+
+  const db = await getPool();
+  const result = await db.query(
+    "SELECT COUNT(*)::int AS attempts, COALESCE(BOOL_OR(pass), false) AS passed FROM attempts WHERE email = $1 OR ip_hash = $2",
+    [email, ipHash],
+  );
+  const state = result.rows[0] || { attempts: 0, passed: false };
+  return {
+    passed: state.passed,
+    attempts: state.attempts,
+    remaining: Math.max(0, maxAttempts - state.attempts),
+  };
+}
+
+async function getRegisteredParticipant(ipHash) {
+  if (!usePostgres) {
+    return readStore().participants.find((participant) => participant.ipHash === ipHash);
+  }
+
+  const db = await getPool();
+  const result = await db.query("SELECT email FROM participants WHERE ip_hash = $1", [ipHash]);
+  return result.rows[0] ? { email: result.rows[0].email, ipHash } : undefined;
+}
+
+async function registerParticipant(email, ipHash) {
+  if (!usePostgres) {
+    const store = readStore();
+    const existing = store.participants.find((participant) => participant.ipHash === ipHash);
+    if (existing && existing.email !== email) {
+      return {
+        ok: false,
+        message: "This IP already registered a different email.",
+        email: existing.email,
+      };
+    }
+
+    if (!existing) {
+      store.participants.push({
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+        email,
+        ipHash,
+      });
+      writeStore(store);
+    }
+
+    return { ok: true, email };
+  }
+
+  const db = await getPool();
+  const existing = await getRegisteredParticipant(ipHash);
+  if (existing && existing.email !== email) {
+    return {
+      ok: false,
+      message: "This IP already registered a different email.",
+      email: existing.email,
+    };
+  }
+
+  if (!existing) {
+    await db.query("INSERT INTO participants (id, email, ip_hash) VALUES ($1, $2, $3) ON CONFLICT (ip_hash) DO NOTHING", [
+      crypto.randomUUID(),
+      email,
+      ipHash,
+    ]);
+  }
+
+  return { ok: true, email };
+}
+
+async function saveAttempt(attempt) {
+  if (!usePostgres) {
+    const store = readStore();
+    store.attempts.push(attempt);
+    writeStore(store);
+    return;
+  }
+
+  const db = await getPool();
+  await db.query(
+    "INSERT INTO attempts (id, created_at, email, ip_hash, answer, pass, stance, mode) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+    [
+      attempt.id,
+      attempt.createdAt,
+      attempt.email,
+      attempt.ipHash,
+      attempt.answer,
+      attempt.pass,
+      attempt.stance,
+      attempt.mode,
+    ],
+  );
 }
 
 function normalizeEmail(email) {
@@ -91,43 +243,6 @@ function getClientIp(req) {
 
 function hashIp(ip) {
   return crypto.createHash("sha256").update(`first-question:${ip}`).digest("hex");
-}
-
-function getParticipantState(store, email, ipHash) {
-  const matching = store.attempts.filter((attempt) => attempt.email === email || attempt.ipHash === ipHash);
-  const passed = matching.some((attempt) => attempt.pass);
-  return {
-    passed,
-    attempts: matching.length,
-    remaining: Math.max(0, maxAttempts - matching.length),
-  };
-}
-
-function getRegisteredParticipant(store, ipHash) {
-  return store.participants.find((participant) => participant.ipHash === ipHash);
-}
-
-function registerParticipant(store, email, ipHash) {
-  const existing = getRegisteredParticipant(store, ipHash);
-  if (existing && existing.email !== email) {
-    return {
-      ok: false,
-      message: "This IP already registered a different email.",
-      email: existing.email,
-    };
-  }
-
-  if (!existing) {
-    store.participants.push({
-      id: crypto.randomUUID(),
-      createdAt: new Date().toISOString(),
-      email,
-      ipHash,
-    });
-    writeStore(store);
-  }
-
-  return { ok: true, email };
 }
 
 function readBody(req) {
@@ -236,7 +351,6 @@ async function handleEvaluate(req, res) {
     const email = normalizeEmail(parsed.email);
     const answer = String(parsed.answer || "").trim();
     const ipHash = hashIp(getClientIp(req));
-    const store = readStore();
 
     if (!isValidEmail(email)) {
       return sendJson(res, 400, {
@@ -248,7 +362,7 @@ async function handleEvaluate(req, res) {
       });
     }
 
-    const registered = getRegisteredParticipant(store, ipHash);
+    const registered = await getRegisteredParticipant(ipHash);
     if (!registered || registered.email !== email) {
       return sendJson(res, 403, {
         pass: false,
@@ -265,11 +379,11 @@ async function handleEvaluate(req, res) {
         blocked: false,
         stance: "unclear",
         message: "The question waits. Empty silence is not an answer.",
-        remaining: getParticipantState(store, email, ipHash).remaining,
+        remaining: (await getParticipantState(email, ipHash)).remaining,
       });
     }
 
-    const participant = getParticipantState(store, email, ipHash);
+    const participant = await getParticipantState(email, ipHash);
     if (participant.passed) {
       return sendJson(res, 200, {
         pass: true,
@@ -302,10 +416,9 @@ async function handleEvaluate(req, res) {
       stance: verdict.stance,
       mode: verdict.mode || "unknown",
     };
-    store.attempts.push(savedAttempt);
-    writeStore(store);
+    await saveAttempt(savedAttempt);
 
-    const nextState = getParticipantState(store, email, ipHash);
+    const nextState = await getParticipantState(email, ipHash);
     return sendJson(res, 200, {
       ...verdict,
       blocked: !verdict.pass && nextState.remaining === 0,
@@ -335,13 +448,12 @@ async function handleStart(req, res) {
       });
     }
 
-    const store = readStore();
-    const registration = registerParticipant(store, email, ipHash);
+    const registration = await registerParticipant(email, ipHash);
     if (!registration.ok) {
       return sendJson(res, 403, registration);
     }
 
-    const participant = getParticipantState(store, email, ipHash);
+    const participant = await getParticipantState(email, ipHash);
     if (!participant.passed && participant.remaining === 0) {
       return sendJson(res, 429, {
         ok: false,
@@ -391,6 +503,10 @@ function handleStatic(req, res) {
 }
 
 const server = http.createServer((req, res) => {
+  if (req.method === "GET" && req.url === "/healthz") {
+    sendJson(res, 200, { ok: true, storage: usePostgres ? "postgres" : "json" });
+    return;
+  }
   if (req.method === "POST" && req.url === "/api/start") {
     handleStart(req, res);
     return;
@@ -409,5 +525,6 @@ const server = http.createServer((req, res) => {
 
 server.listen(port, host, () => {
   console.log(`The First Question is running on http://127.0.0.1:${port}`);
+  console.log(usePostgres ? "Using Postgres for saved answers." : "Using local JSON for saved answers.");
   console.log(process.env.OPENAI_API_KEY ? `Using ${model} for judging.` : "OPENAI_API_KEY not set; using local fallback judge.");
 });

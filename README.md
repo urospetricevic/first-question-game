@@ -35,3 +35,55 @@ The included `render.yaml` configures:
 After creating the service, add your `OPENAI_API_KEY` in Render's Environment settings.
 
 For permanent saved answers, upgrade the service and add a persistent disk, then set `DATA_DIR` to the disk mount path.
+
+## Deploy On GCP
+
+Use Cloud Run for the web app and Cloud SQL for Postgres. When Cloud SQL env vars are present, the app stores participants and attempts in Postgres. Without them, local development still uses `data/answers.json`.
+
+One-time setup:
+
+```bash
+gcloud auth login
+gcloud config set project YOUR_PROJECT_ID
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com sqladmin.googleapis.com secretmanager.googleapis.com
+
+gcloud sql instances create first-question-db \
+  --database-version=POSTGRES_16 \
+  --tier=db-f1-micro \
+  --region=us-central1
+
+gcloud sql databases create first_question --instance=first-question-db
+gcloud sql users create first_question_user --instance=first-question-db --password='REPLACE_WITH_STRONG_PASSWORD'
+
+printf 'REPLACE_WITH_STRONG_PASSWORD' | gcloud secrets create first-question-db-password --data-file=-
+printf 'YOUR_OPENAI_API_KEY' | gcloud secrets create first-question-openai-api-key --data-file=-
+```
+
+Deploy:
+
+```bash
+PROJECT_ID="$(gcloud config get-value project)"
+INSTANCE_CONNECTION_NAME="$PROJECT_ID:us-central1:first-question-db"
+
+gcloud run deploy first-question-game \
+  --source . \
+  --region=us-central1 \
+  --allow-unauthenticated \
+  --add-cloudsql-instances="$INSTANCE_CONNECTION_NAME" \
+  --set-env-vars="INSTANCE_CONNECTION_NAME=$INSTANCE_CONNECTION_NAME,DB_NAME=first_question,DB_USER=first_question_user,OPENAI_MODEL=gpt-4.1-mini" \
+  --set-secrets="DB_PASSWORD=first-question-db-password:latest,OPENAI_API_KEY=first-question-openai-api-key:latest"
+```
+
+Inspect saved answers:
+
+```bash
+gcloud sql connect first-question-db --user=first_question_user --database=first_question
+```
+
+Then in `psql`:
+
+```sql
+select email, answer, pass, stance, mode, created_at
+from attempts
+order by created_at desc;
+```
