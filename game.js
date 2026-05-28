@@ -15,9 +15,7 @@ let activeEmail = "";
 function showResult(payload) {
   result.className = `result ${payload.pass ? "pass" : "fail"}`;
   if (payload.pass) {
-    questionBlock.hidden = true;
-    form.hidden = true;
-    result.innerHTML = '<span class="verdict">Accepted</span><span class="detail">You will be invited to Level 2.</span>';
+    showLevelTwoInvite();
     return;
   }
 
@@ -40,11 +38,20 @@ function showGateError(message) {
   gateResult.innerHTML = `<span class="verdict">${message}</span>`;
 }
 
+function showLevelTwoInvite() {
+  questionBlock.hidden = true;
+  form.hidden = true;
+  result.className = "result pass";
+  result.innerHTML = '<span class="verdict">Accepted</span><span class="detail">You will be invited to Level 2.</span>';
+}
+
 function showLevel(emailValue) {
   activeEmail = emailValue;
   emailGate.hidden = true;
   levelOne.hidden = false;
-  answer.focus();
+  if (!form.hidden) {
+    answer.focus();
+  }
 }
 
 async function submitAnswer(event) {
@@ -117,6 +124,9 @@ async function submitEmail(event) {
     sessionStorage.setItem("firstQuestionEmail", emailValue);
     showGateResult(payload);
     showLevel(emailValue);
+    if (payload.passed) {
+      showLevelTwoInvite();
+    }
   } catch (error) {
     showGateError(error.message === "Failed to fetch" ? "Open the server URL" : "Blocked");
   } finally {

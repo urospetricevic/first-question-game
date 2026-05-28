@@ -389,7 +389,7 @@ async function handleEvaluate(req, res) {
         pass: true,
         blocked: false,
         stance: "accepted",
-        message: "Already accepted.",
+        message: "You already passed Level 1. You will be invited to Level 2.",
         remaining: participant.remaining,
       });
     }
@@ -471,6 +471,7 @@ async function handleStart(req, res) {
       blocked: false,
       passed: participant.passed,
       remaining: participant.remaining,
+      message: participant.passed ? "You already passed Level 1. You will be invited to Level 2." : "Level 1 is open.",
     });
   } catch (error) {
     return sendJson(res, 500, {
